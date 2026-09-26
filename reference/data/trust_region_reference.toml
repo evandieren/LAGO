@@ -1,0 +1,37 @@
+[radius_update]
+unchanged = 1.0
+good_interior = 1.0
+shrink = 0.5
+expand = 2.0
+
+[quadratic_model]
+predicted_improvement = 0.361
+step = [0.2, -0.1]
+model_value = 0.639
+f_center = 1.0
+hessian = [[2.0, 0.3], [0.3, 1.0]]
+gradient = [-1.0, 2.0]
+center = [0.0, 0.0]
+
+[cauchy_point]
+step = [0.4472135954999579, -0.8944271909999159]
+step_norm = 0.9999999999999999
+
+[improvement_ratio]
+f_trial = 0.8
+rho = 0.5540166204986149
+
+[rejected_sr1]
+hessian = [[2.325, -0.35000000000000003], [-0.35000000000000003, 2.3]]
+accepted = false
+radius = 0.5
+gradient = [-1.0, 2.0]
+center = [0.0, 0.0]
+rho = -0.2770083102493077
+
+[accepted_sr1]
+hessian = [[2.325, -0.35000000000000003], [-0.35000000000000003, 2.3]]
+accepted = true
+radius = 1.0
+gradient = [-0.5, 1.7]
+center = [0.2, -0.1]
