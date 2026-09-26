@@ -1,11 +1,12 @@
 using LAGO_BO
+using AbstractBayesOpt
 using LinearAlgebra
 using Optim
 using TOML
 
 
 # ------------------------------------------------------------------
-# Fixed trust-region state
+# Fixed trust-region configuration
 # ------------------------------------------------------------------
 
 config = TRConfig(
@@ -17,6 +18,43 @@ config = TRConfig(
     2.0,   # γ2  : expansion factor
     4.0,   # r_max
 )
+
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+# TOML prefers nested vectors over Julia matrices.
+matrix_to_rows(A) = [collect(row) for row in eachrow(A)]
+
+
+function solve_reference(g, H, radius)
+    s = zeros(length(g))
+
+    _, interior, lambda, _, reached_solution =
+        Optim.solve_tr_subproblem!(
+            g,
+            H,
+            radius,
+            s,
+        )
+
+    return Dict(
+        "gradient" => g,
+        "hessian" => matrix_to_rows(H),
+        "radius" => radius,
+        "step" => copy(s),
+        "step_norm" => norm(s),
+        "lambda" => lambda,
+        "interior" => interior,
+        "reached_solution" => reached_solution,
+    )
+end
+
+
+# ------------------------------------------------------------------
+# Basic trust-region state
+# ------------------------------------------------------------------
 
 center = [0.0, 0.0]
 
@@ -46,22 +84,36 @@ function make_tr()
 end
 
 
-# Helper because TOML prefers nested vectors over Julia matrices.
-matrix_to_rows(A) = [collect(row) for row in eachrow(A)]
+# ------------------------------------------------------------------
+# Quadratic model
+# ------------------------------------------------------------------
 
 s = [0.2, -0.1]
 
 tr = make_tr()
 
 q = LAGO_BO.quad_surrogate(s, tr)
-predicted_improvement = tr.f_center - q
+
+predicted_improvement =
+    tr.f_center - q
+
+
+# ------------------------------------------------------------------
+# Cauchy point
+# ------------------------------------------------------------------
 
 cauchy = LAGO_BO.cauchy_point(
     g,
     H,
     1.0,
 )
+
 cauchy_norm = norm(cauchy)
+
+
+# ------------------------------------------------------------------
+# Improvement ratio
+# ------------------------------------------------------------------
 
 f_trial = 0.8
 
@@ -70,6 +122,11 @@ ir = LAGO_BO.compute_ir(
     s,
     f_trial,
 )
+
+
+# ------------------------------------------------------------------
+# Radius updates
+# ------------------------------------------------------------------
 
 radius_shrink = LAGO_BO.update_radius(
     1.0,
@@ -119,12 +176,17 @@ radius_expand = LAGO_BO.update_radius(
     config.r_max,
 )
 
+
+# ------------------------------------------------------------------
+# Accepted SR1 update
+# ------------------------------------------------------------------
+
 x_trial = center + s
 
 y_trial = [
     0.8,   # f(x_trial)
-   -0.5,   # ∂f/∂x1
-    1.7,   # ∂f/∂x2
+   -0.5,   # df/dx1
+    1.7,   # df/dx2
 ]
 
 mu = [0.0]
@@ -141,12 +203,10 @@ tr_accepted, accepted = LAGO_BO.update_TR(
     sigma,
 )
 
-println("accepted = ", accepted)
-println("center = ", tr_accepted.center)
-println("radius = ", tr_accepted.radius)
-println("H = ")
-display(tr_accepted.Hk)
 
+# ------------------------------------------------------------------
+# Rejected SR1 update
+# ------------------------------------------------------------------
 
 tr_rejected = make_tr()
 
@@ -174,29 +234,9 @@ tr_rejected, accepted_bad = LAGO_BO.update_TR(
 )
 
 
-# TR subproblem solutions
-function solve_reference(g, H, radius)
-    s = zeros(length(g))
-
-    _, interior, lambda, _, reached_solution =
-        Optim.solve_tr_subproblem!(
-            g,
-            H,
-            radius,
-            s,
-        )
-
-    return Dict(
-        "gradient" => g,
-        "hessian" => matrix_to_rows(H),
-        "radius" => radius,
-        "step" => copy(s),
-        "step_norm" => norm(s),
-        "lambda" => lambda,
-        "interior" => interior,
-        "reached_solution" => reached_solution,
-    )
-end
+# ------------------------------------------------------------------
+# Classical ball-only trust-region subproblem
+# ------------------------------------------------------------------
 
 tr_interior = solve_reference(
     [-0.2, 0.1],
@@ -233,6 +273,125 @@ tr_hard = solve_reference(
     ],
     1.0,
 )
+
+
+# ------------------------------------------------------------------
+# Box-constrained trust-region fallback
+# ------------------------------------------------------------------
+#
+# The ball-only solution moves +0.5 in x1:
+#
+#     center + step = [0.9, 0.5] + [0.5, 0.0]
+#                   = [1.4, 0.5]
+#
+# which violates the upper box bound x1 <= 1.
+#
+# The constrained solution should therefore saturate the box at
+# approximately step = [0.1, 0.0].
+# ------------------------------------------------------------------
+
+box_center = [0.9, 0.5]
+
+box_lower = [0.0, 0.0]
+box_upper = [1.0, 1.0]
+
+box_gradient = [-1.0, 0.0]
+
+box_hessian = [
+    1.0  0.0
+    0.0  1.0
+]
+
+box_radius = 0.5
+
+box_domain = ContinuousDomain(
+    box_lower,
+    box_upper,
+)
+
+box_tr = TrustRegion(
+    copy(box_center),
+    box_radius,
+    0.0,
+    copy(box_gradient),
+    copy(box_hessian),
+    config,
+    false,
+    0.0,
+    copy(box_gradient),
+    copy(box_hessian),
+)
+
+
+# First solve the ordinary ball-only TR problem.
+ball_step, ball_reached_solution =
+    LAGO_BO.get_tr_candidate(
+        box_tr;
+        verbose=false,
+    )
+
+ball_candidate =
+    box_center .+ ball_step
+
+ball_feasible =
+    all(box_lower .<= ball_candidate) &&
+    all(ball_candidate .<= box_upper)
+
+
+# Now explicitly call the constrained fallback.
+constrained_step =
+    LAGO_BO.get_tr_candidate_constrained(
+        box_tr,
+        box_domain;
+        verbose=false,
+    )
+
+constrained_candidate =
+    box_center .+ constrained_step
+
+constrained_model_value =
+    LAGO_BO.quad_surrogate(
+        constrained_step,
+        box_tr,
+    )
+
+
+# Finally call the complete wrapper. Since the ball-only solution
+# violates the box, this should return the constrained solution.
+box_step =
+    LAGO_BO.get_tr_candidate_box(
+        box_tr,
+        box_domain;
+        verbose=false,
+    )
+
+
+# ------------------------------------------------------------------
+# Sanity checks for the box-constrained fixture
+# ------------------------------------------------------------------
+
+@assert ball_reached_solution
+
+@assert !ball_feasible
+
+@assert norm(ball_step) <= box_radius * (1 + 1e-8)
+
+@assert all(box_lower .<= constrained_candidate)
+@assert all(constrained_candidate .<= box_upper)
+
+@assert norm(constrained_step) <= box_radius * (1 + 1e-8)
+
+@assert isapprox(
+    box_step,
+    constrained_step;
+    atol=1e-8,
+    rtol=1e-8,
+)
+
+
+# ------------------------------------------------------------------
+# Reference data
+# ------------------------------------------------------------------
 
 data = Dict(
     "quadratic_model" => Dict(
@@ -285,7 +444,32 @@ data = Dict(
         "indefinite" => tr_indefinite,
         "hard" => tr_hard,
     ),
+
+    "box_constrained_subproblem" => Dict(
+        "center" => box_center,
+        "lower_bounds" => box_lower,
+        "upper_bounds" => box_upper,
+        "gradient" => box_gradient,
+        "hessian" => matrix_to_rows(box_hessian),
+        "radius" => box_radius,
+
+        "ball_step" => ball_step,
+        "ball_candidate" => ball_candidate,
+        "ball_feasible" => ball_feasible,
+        "ball_reached_solution" => ball_reached_solution,
+
+        "constrained_step" => constrained_step,
+        "constrained_candidate" => constrained_candidate,
+        "constrained_model_value" => constrained_model_value,
+
+        "get_tr_candidate_box_step" => box_step,
+    ),
 )
+
+
+# ------------------------------------------------------------------
+# Write TOML
+# ------------------------------------------------------------------
 
 output_path = normpath(
     joinpath(
@@ -304,3 +488,12 @@ end
 
 println("Wrote reference data to:")
 println(output_path)
+
+println()
+println("Box-constrained fixture:")
+println("  ball step             = ", ball_step)
+println("  ball candidate        = ", ball_candidate)
+println("  ball feasible         = ", ball_feasible)
+println("  constrained step      = ", constrained_step)
+println("  constrained candidate = ", constrained_candidate)
+println("  constrained model     = ", constrained_model_value)

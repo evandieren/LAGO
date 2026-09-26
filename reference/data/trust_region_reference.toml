@@ -17,9 +17,65 @@ center = [0.0, 0.0]
 step = [0.4472135954999579, -0.8944271909999159]
 step_norm = 0.9999999999999999
 
+[box_constrained_subproblem]
+upper_bounds = [1.0, 1.0]
+constrained_candidate = [1.0, 0.5]
+gradient = [-1.0, 0.0]
+ball_candidate = [1.4, 0.5]
+ball_feasible = false
+get_tr_candidate_box_step = [0.09999999999999996, 0.0]
+radius = 0.5
+ball_step = [0.49999999999999994, -0.0]
+constrained_model_value = -0.09499999999999997
+lower_bounds = [0.0, 0.0]
+constrained_step = [0.09999999999999996, 0.0]
+hessian = [[1.0, 0.0], [0.0, 1.0]]
+center = [0.9, 0.5]
+ball_reached_solution = true
+
 [improvement_ratio]
 f_trial = 0.8
 rho = 0.5540166204986149
+
+[trust_region_subproblem.hard]
+step = [-0.9428090415820634, 0.3333333333333333]
+hessian = [[-1.0, 0.0], [0.0, 2.0]]
+step_norm = 1.0
+gradient = [0.0, 1.0]
+radius = 1.0
+lambda = 1.0000000000000002
+interior = false
+reached_solution = true
+
+[trust_region_subproblem.interior]
+step = [0.1, -0.1]
+hessian = [[2.0, 0.0], [0.0, 1.0]]
+step_norm = 0.14142135623730953
+gradient = [-0.2, 0.1]
+radius = 1.0
+lambda = 0.0
+interior = true
+reached_solution = true
+
+[trust_region_subproblem.indefinite]
+step = [-0.9502524343435103, -0.3114808357254633]
+hessian = [[-1.0, 0.0], [0.0, 2.0]]
+step_norm = 1.0000000000000002
+gradient = [0.2, 1.0]
+radius = 1.0
+lambda = 1.2104703895214661
+interior = false
+reached_solution = true
+
+[trust_region_subproblem.boundary]
+step = [0.38737691414485725, -0.9219214317866836]
+hessian = [[2.0, 0.3], [0.3, 1.0]]
+step_norm = 1.0000000000000004
+gradient = [-1.0, 2.0]
+radius = 1.0
+lambda = 1.2954375517035521
+interior = false
+reached_solution = true
 
 [rejected_sr1]
 hessian = [[2.325, -0.35000000000000003], [-0.35000000000000003, 2.3]]
