@@ -1,5 +1,6 @@
 using LAGO_BO
 using LinearAlgebra
+using Optim
 using TOML
 
 
@@ -172,6 +173,67 @@ tr_rejected, accepted_bad = LAGO_BO.update_TR(
     sigma,
 )
 
+
+# TR subproblem solutions
+function solve_reference(g, H, radius)
+    s = zeros(length(g))
+
+    _, interior, lambda, _, reached_solution =
+        Optim.solve_tr_subproblem!(
+            g,
+            H,
+            radius,
+            s,
+        )
+
+    return Dict(
+        "gradient" => g,
+        "hessian" => matrix_to_rows(H),
+        "radius" => radius,
+        "step" => copy(s),
+        "step_norm" => norm(s),
+        "lambda" => lambda,
+        "interior" => interior,
+        "reached_solution" => reached_solution,
+    )
+end
+
+tr_interior = solve_reference(
+    [-0.2, 0.1],
+    [
+        2.0  0.0
+        0.0  1.0
+    ],
+    1.0,
+)
+
+tr_boundary = solve_reference(
+    [-1.0, 2.0],
+    [
+        2.0  0.3
+        0.3  1.0
+    ],
+    1.0,
+)
+
+tr_indefinite = solve_reference(
+    [0.2, 1.0],
+    [
+        -1.0  0.0
+         0.0  2.0
+    ],
+    1.0,
+)
+
+tr_hard = solve_reference(
+    [0.0, 1.0],
+    [
+        -1.0  0.0
+         0.0  2.0
+    ],
+    1.0,
+)
+
 data = Dict(
     "quadratic_model" => Dict(
         "center" => center,
@@ -215,6 +277,13 @@ data = Dict(
         "radius" => tr_rejected.radius,
         "gradient" => tr_rejected.∇f_center,
         "hessian" => matrix_to_rows(tr_rejected.Hk),
+    ),
+
+    "trust_region_subproblem" => Dict(
+        "interior" => tr_interior,
+        "boundary" => tr_boundary,
+        "indefinite" => tr_indefinite,
+        "hard" => tr_hard,
     ),
 )
 
