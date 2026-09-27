@@ -3,6 +3,11 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from ._trust_region_solver import (
+    solve_box_trust_region_subproblem,
+    solve_trust_region_subproblem,
+)
+
 @dataclass(frozen=True)
 class TrustRegionConfig:
     initial_radius: float
@@ -109,7 +114,233 @@ def update_radius(
     # -> keep the current radius.
     return radius
 
-# Trust-region subproblem solvers.
+def is_box_feasible(
+    point: Tensor,
+    lower_bounds: Tensor,
+    upper_bounds: Tensor,
+) -> bool:
+    return bool(
+        torch.all(point >= lower_bounds)
+        and torch.all(point <= upper_bounds)
+    )
+
+def is_tr_step_feasible(
+    step: Tensor,
+    state: TrustRegionState,
+    lower_bounds: Tensor,
+    upper_bounds: Tensor,
+    tolerance: float = 1e-8,
+) -> bool:
+    """Check finiteness, box feasibility, and TR feasibility."""
+
+    if not torch.all(torch.isfinite(step)).item():
+        return False
+
+    candidate = state.center + step
+
+    if not is_box_feasible(
+        candidate,
+        lower_bounds - tolerance,
+        upper_bounds + tolerance,
+    ):
+        return False
+
+    step_norm = torch.linalg.norm(step).item()
+
+    return step_norm <= state.radius * (1 + tolerance)
+
+def project_onto_tr_ball(
+    step: Tensor,
+    radius: float,
+) -> Tensor:
+    """Radially project a step onto the trust-region ball."""
+
+    step_norm = torch.linalg.norm(step)
+
+    if step_norm <= radius or step_norm == 0:
+        return step.clone()
+
+    return (radius / step_norm) * step
+
+def get_box_constrained_candidate(
+    state: TrustRegionState,
+    lower_bounds: Tensor,
+    upper_bounds: Tensor,
+    feasibility_tolerance: float = 1e-8,
+) -> Tensor:
+    """
+    Get a local candidate satisfying box and TR constraints.
+    
+    Box candidate
+      │
+      ├─ feasible? → return
+      │
+      └─ otherwise
+            │
+            ├─ radial projection if possible
+            ├─ Cauchy candidate if possible
+            │
+            └─ choose best model value
+                 or zero if none feasible
+    """
+
+    step_lower = lower_bounds - state.center
+    step_upper = upper_bounds - state.center
+
+    result = solve_box_trust_region_subproblem(
+        grad=state.grad_center,
+        hessian=state.hessian,
+        radius=state.radius,
+        step_lower=step_lower,
+        step_upper=step_upper,
+    )
+
+    solver_step = result.step
+
+    solver_value = quadratic_model(
+        state.f_center,
+        state.grad_center,
+        state.hessian,
+        solver_step,
+    )
+
+    solver_valid = (
+        is_tr_step_feasible(
+            solver_step,
+            state,
+            lower_bounds,
+            upper_bounds,
+            feasibility_tolerance,
+        )
+        and torch.isfinite(solver_value).item()
+    )
+
+    if solver_valid:
+        return solver_step
+
+    candidates: list[Tensor] = []
+
+    # Match Julia: if the numerical candidate respects the box,
+    # radially project it onto the TR ball and retain it if feasible.
+    box_feasible = (
+        torch.all(torch.isfinite(solver_step)).item()
+        and torch.all(
+            solver_step
+            >= step_lower - feasibility_tolerance
+        ).item()
+        and torch.all(
+            solver_step
+            <= step_upper + feasibility_tolerance
+        ).item()
+    )
+
+    if box_feasible:
+        projected = project_onto_tr_ball(
+            solver_step,
+            state.radius,
+        )
+
+        if is_tr_step_feasible(
+            projected,
+            state,
+            lower_bounds,
+            upper_bounds,
+            feasibility_tolerance,
+        ):
+            candidates.append(projected)
+
+    # Nocedal-Wright Cauchy backup.
+    cauchy = cauchy_point(
+        state.grad_center,
+        state.hessian,
+        state.radius,
+    )
+
+    if is_tr_step_feasible(
+        cauchy,
+        state,
+        lower_bounds,
+        upper_bounds,
+        feasibility_tolerance,
+    ):
+        candidates.append(cauchy)
+
+    if not candidates:
+        return torch.zeros_like(state.center)
+
+    values = [
+        quadratic_model(
+            state.f_center,
+            state.grad_center,
+            state.hessian,
+            step,
+        )
+        for step in candidates
+    ]
+
+    best_index = int(
+        torch.argmin(torch.stack(values)).item()
+    )
+
+    return candidates[best_index]
+
+def get_local_candidate(
+    state: TrustRegionState,
+    lower_bounds: Tensor,
+    upper_bounds: Tensor,
+    feasibility_tolerance: float = 1e-8,
+) -> Tensor:
+    """
+    Compute the local LAGO trust-region candidate.
+    
+    Arguments:
+    - state : current trust-region state.
+    - lower_bounds : lower bounds for the box constraints.
+    - upper_bounds : upper bounds for the box constraints.
+    - feasibility_tolerance : tolerance for feasibility checks.
+
+    Returns:
+    - step : local candidate step.
+    """
+
+    # Trying the unconstrained trust-region solver first.
+    result = solve_trust_region_subproblem(
+        grad=state.grad_center,
+        hessian=state.hessian,
+        radius=state.radius,
+    )
+
+    step = result.step
+
+    model_value = quadratic_model(
+        state.f_center,
+        state.grad_center,
+        state.hessian,
+        step,
+    )
+
+    # checking if valid
+    ball_solution_valid = (
+        is_tr_step_feasible(
+            step,
+            state,
+            lower_bounds,
+            upper_bounds,
+            feasibility_tolerance,
+        )
+        and torch.isfinite(model_value).item()
+    )
+
+    if ball_solution_valid:
+        return step
+
+    # If the unconstrained solver fails, we fall back to the box-constrained solver.
+    return get_box_constrained_candidate(
+        state=state,
+        lower_bounds=lower_bounds,
+        upper_bounds=upper_bounds,
+        feasibility_tolerance=feasibility_tolerance,
+    )
 
 def cauchy_point(
     grad: Tensor,
@@ -148,13 +379,3 @@ def cauchy_point(
         step = step * (radius / step_norm)
 
     return step
-
-def is_box_feasible(
-    point: Tensor,
-    lower_bounds: Tensor,
-    upper_bounds: Tensor,
-) -> bool:
-    return bool(
-        torch.all(point >= lower_bounds)
-        and torch.all(point <= upper_bounds)
-    )

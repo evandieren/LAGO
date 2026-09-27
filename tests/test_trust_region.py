@@ -11,6 +11,9 @@ from lago.trust_region import (
     predicted_improvement,
     sr1_update,
     update_radius,
+    project_onto_tr_ball,
+    is_box_feasible,
+    get_local_candidate,
     cauchy_point,
 )
 
@@ -327,6 +330,140 @@ def test_update_radius_expands_near_boundary():
     )
 
     assert radius == expected
+
+def test_project_onto_tr_ball():
+    step = torch.tensor(
+        [3.0, 4.0],
+        dtype=dtype,
+    )
+
+    projected = project_onto_tr_ball(
+        step,
+        radius=2.0,
+    )
+
+    torch.testing.assert_close(
+        torch.linalg.norm(projected),
+        torch.tensor(2.0, dtype=dtype),
+    )
+
+def test_local_candidate_uses_box_fallback():
+    case = load_reference()[
+        "box_constrained_subproblem"
+    ]
+
+    state = TrustRegionState(
+        center=torch.tensor(
+            case["center"],
+            dtype=dtype,
+        ),
+        radius=case["radius"],
+        f_center=torch.tensor(
+            0.0,
+            dtype=dtype,
+        ),
+        grad_center=torch.tensor(
+            case["gradient"],
+            dtype=dtype,
+        ),
+        hessian=torch.tensor(
+            case["hessian"],
+            dtype=dtype,
+        ),
+    )
+
+    lower = torch.tensor(
+        case["lower_bounds"],
+        dtype=dtype,
+    )
+
+    upper = torch.tensor(
+        case["upper_bounds"],
+        dtype=dtype,
+    )
+
+    step = get_local_candidate(
+        state=state,
+        lower_bounds=lower,
+        upper_bounds=upper,
+    )
+
+    expected = torch.tensor(
+        case["get_tr_candidate_box_step"],
+        dtype=dtype,
+    )
+
+    torch.testing.assert_close(
+        step,
+        expected,
+        rtol=1e-5,
+        atol=1e-6,
+    )
+
+    candidate = state.center + step
+
+    assert is_box_feasible(
+        candidate,
+        lower,
+        upper,
+    )
+
+    assert (
+        torch.linalg.norm(step).item()
+        <= state.radius * (1 + 1e-8)
+    )
+
+def test_local_candidate_uses_ball_solution_when_box_feasible():
+    state = TrustRegionState(
+        center=torch.tensor(
+            [0.0, 0.0],
+            dtype=dtype,
+        ),
+        radius=1.0,
+        f_center=torch.tensor(
+            0.0,
+            dtype=dtype,
+        ),
+        grad_center=torch.tensor(
+            [-0.2, 0.1],
+            dtype=dtype,
+        ),
+        hessian=torch.tensor(
+            [
+                [2.0, 0.0],
+                [0.0, 1.0],
+            ],
+            dtype=dtype,
+        ),
+    )
+
+    lower = torch.tensor(
+        [-1.0, -1.0],
+        dtype=dtype,
+    )
+
+    upper = torch.tensor(
+        [1.0, 1.0],
+        dtype=dtype,
+    )
+
+    step = get_local_candidate(
+        state=state,
+        lower_bounds=lower,
+        upper_bounds=upper,
+    )
+
+    expected = torch.tensor(
+        [0.1, -0.1],
+        dtype=dtype,
+    )
+
+    torch.testing.assert_close(
+        step,
+        expected,
+        rtol=1e-7,
+        atol=1e-9,
+    )
 
 ## ------------------
 ## Cauchy point tests
