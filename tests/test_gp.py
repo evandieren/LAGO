@@ -10,6 +10,7 @@ from lago.gp import (
     posterior_mean,
     posterior_mean_hessian,
     posterior_variance,
+    update_value_gp,
 )
 
 
@@ -367,4 +368,273 @@ def test_posterior_mean_hessian_matches_autograd_away_from_data():
         H_ad,
         rtol=1e-6,
         atol=1e-8,
+    )
+
+def test_ard_posterior_mean_hessian_at_training_point():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+        use_ard=True,
+    )
+
+    model.covar_module.base_kernel.initialize(
+        lengthscale=torch.tensor(
+            [0.7, 1.4],
+            dtype=dtype,
+        )
+    )
+
+    x = train_X[1].clone()
+
+    mean = partial(
+        posterior_mean,
+        model,
+    )
+
+    H = posterior_mean_hessian(
+        model,
+        x,
+    )
+
+    H_fd = finite_difference_hessian(
+        mean,
+        x,
+        h=1e-4,
+    )
+
+    torch.testing.assert_close(
+        H,
+        H_fd,
+        rtol=1e-3,
+        atol=1e-4,
+    )
+
+def test_ard_posterior_mean_hessian_matches_autograd_away_from_data():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+        use_ard=True,
+    )
+
+    model.covar_module.base_kernel.initialize(
+        lengthscale=torch.tensor(
+            [0.7, 1.4],
+            dtype=dtype,
+        )
+    )
+
+    x = torch.tensor(
+        [0.3, 0.4],
+        dtype=dtype,
+    )
+
+    mean = partial(
+        posterior_mean,
+        model,
+    )
+
+    H = posterior_mean_hessian(
+        model,
+        x,
+    )
+
+    H_ad = hessian(
+        mean,
+        x,
+    )
+
+    torch.testing.assert_close(
+        H,
+        H_ad,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+
+def test_update_value_gp_replaces_training_data_and_preserves_mean():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+    )
+
+    initial_mean = (
+        model.mean_module
+        .constant
+        .detach()
+        .clone()
+    )
+
+    new_X = torch.tensor(
+        [
+            [0.0, 0.0],
+            [0.2, 0.8],
+            [0.4, 0.6],
+        ],
+        dtype=dtype,
+    )
+
+    new_Y = torch.tensor(
+        [
+            [10.0],
+            [20.0],
+            [30.0],
+        ],
+        dtype=dtype,
+    )
+
+    updated = update_value_gp(
+        model,
+        new_X,
+        new_Y,
+    )
+
+    torch.testing.assert_close(
+        updated.train_inputs[0],
+        new_X,
+    )
+
+    torch.testing.assert_close(
+        updated.train_targets,
+        new_Y.squeeze(-1),
+    )
+
+    torch.testing.assert_close(
+        updated.mean_module.constant,
+        initial_mean,
+    )
+
+    # Make sure the test would catch recomputing
+    # the prior mean from the new active data.
+    assert not torch.isclose(
+        updated.mean_module.constant.squeeze(),
+        new_Y.mean(),
+    )
+
+def test_update_value_gp_preserves_hyperparameters():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+        use_ard=True,
+    )
+
+    model.covar_module.base_kernel.initialize(
+        lengthscale=torch.tensor(
+            [0.7, 1.4],
+            dtype=dtype,
+        )
+    )
+
+    model.covar_module.initialize(
+        outputscale=2.3,
+    )
+
+    new_X = train_X[:3]
+    new_Y = train_Y[:3]
+
+    updated = update_value_gp(
+        model,
+        new_X,
+        new_Y,
+    )
+
+    torch.testing.assert_close(
+        updated.covar_module.base_kernel.lengthscale,
+        model.covar_module.base_kernel.lengthscale,
+    )
+
+    torch.testing.assert_close(
+        updated.covar_module.outputscale,
+        model.covar_module.outputscale,
+    )
+
+    assert (
+        updated.covar_module
+        .base_kernel
+        .ard_num_dims
+        == train_X.shape[-1]
+    )
+
+def test_update_value_gp_preserves_nugget():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+        nugget=1e-9,
+    )
+
+    new_X = train_X[:2]
+    new_Y = train_Y[:2]
+
+    updated = update_value_gp(
+        model,
+        new_X,
+        new_Y,
+    )
+
+    expected = torch.full(
+        (2,),
+        1e-9,
+        dtype=dtype,
+    )
+
+    torch.testing.assert_close(
+        updated.likelihood.noise,
+        expected,
+    )
+
+def test_update_value_gp_can_refit():
+    train_X, train_Y = make_training_data()
+
+    model = build_value_gp(
+        train_X,
+        train_Y,
+    )
+
+    initial_mean = (
+        model.mean_module
+        .constant
+        .detach()
+        .clone()
+    )
+
+    new_X = train_X[:3]
+    new_Y = train_Y[:3]
+
+    updated = update_value_gp(
+        model,
+        new_X,
+        new_Y,
+        refit=True,
+    )
+
+    lengthscale = (
+        updated.covar_module
+        .base_kernel
+        .lengthscale
+        .detach()
+    )
+
+    outputscale = (
+        updated.covar_module
+        .outputscale
+        .detach()
+    )
+
+    assert torch.all(torch.isfinite(lengthscale))
+    assert torch.all(lengthscale > 0)
+
+    assert torch.isfinite(outputscale)
+    assert outputscale > 0
+
+    torch.testing.assert_close(
+        updated.mean_module.constant,
+        initial_mean,
     )

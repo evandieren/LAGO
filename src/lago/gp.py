@@ -63,6 +63,8 @@ def build_value_gp(
 
     # The prior mean is prescribed by LAGO, not estimated by MLE.
     mean_module.constant.requires_grad_(False)
+
+    # kernel definition
     if use_ard:
         base_kernel = MaternKernel(
             nu=2.5,
@@ -111,7 +113,7 @@ def fit_value_gp(
         model.likelihood,
         model,
     )
-
+    
     fit_gpytorch_mll(mll)
 
     return model
@@ -165,16 +167,37 @@ def posterior_mean_hessian(
 
     if x.ndim != 1:
         raise ValueError("x must have shape (d,).")
+    
+    base_kernel = model.covar_module.base_kernel
+
+    if base_kernel.__class__ is not MaternKernel or base_kernel.nu != 2.5:
+        raise ValueError(
+            "posterior_mean_hessian() only supports "
+            "Matern-5/2 kernels."
+        )
 
     train_X = model.train_inputs[0]
     train_Y = model.train_targets
 
     lengthscale = (
-        model.covar_module
-        .base_kernel
+        base_kernel
         .lengthscale
-        .squeeze()
+        .reshape(-1)
     )
+
+    d = x.numel()
+
+    # Isotropic GP: one lengthscale shared across dimensions.
+    if lengthscale.numel() == 1:
+        lengthscale = lengthscale.expand(d)
+
+    # ARD GP: one lengthscale per dimension.
+    elif lengthscale.numel() != d:
+        raise ValueError(
+            "Expected either one isotropic lengthscale "
+            f"or {d} ARD lengthscales, got "
+            f"{lengthscale.numel()}."
+        )
 
     outputscale = (
         model.covar_module
@@ -200,43 +223,54 @@ def posterior_mean_hessian(
         train_Y - mean_train,
     )
 
+    # delta[i] = x - x_i
     delta = x.unsqueeze(0) - train_X
+
+    inv_lengthscale_squared = 1.0 / lengthscale**2
+
+    # ARD-scaled distance:
+    #
+    # r_i^2 = delta_i^T Q delta_i
+    scaled_delta = delta / lengthscale
+
     r = torch.linalg.vector_norm(
-        delta,
+        scaled_delta,
         dim=-1,
     )
 
-    a = torch.sqrt(
-        torch.tensor(
-            5.0,
-            dtype=x.dtype,
-            device=x.device,
-        )
-    ) / lengthscale
-
-    exp_term = torch.exp(-a * r)
-
-    identity = torch.eye(
-        x.numel(),
-        dtype=x.dtype,
-        device=x.device,
+    # Q delta_i
+    q_delta = (
+        delta
+        * inv_lengthscale_squared
     )
 
     outer = (
-        delta.unsqueeze(-1)
-        * delta.unsqueeze(-2)
+        q_delta.unsqueeze(-1)
+        * q_delta.unsqueeze(-2)
+    )
+
+    Q = torch.diag(
+        inv_lengthscale_squared
+    )
+
+    sqrt5 = torch.sqrt(
+        x.new_tensor(5.0)
+    )
+
+    exp_term = torch.exp(
+        -sqrt5 * r
     )
 
     H_kernel = (
         outputscale
         * exp_term[:, None, None]
         * (
-            a**4 / 3.0 * outer
+            (25.0 / 3.0) * outer
             - (
-                a**2 / 3.0
-                * (1.0 + a * r)
+                (5.0 / 3.0)
+                * (1.0 + sqrt5 * r)
             )[:, None, None]
-            * identity
+            * Q
         )
     )
 
@@ -245,3 +279,84 @@ def posterior_mean_hessian(
         alpha,
         H_kernel,
     )
+
+def update_value_gp(
+    model: SingleTaskGP,
+    train_X: Tensor,
+    train_Y: Tensor,
+    *,
+    refit: bool = False,
+) -> SingleTaskGP:
+    """Rebuild a value GP on new active data.
+
+    The fixed prior mean and current kernel hyperparameters are preserved.
+    If refit=True, hyperparameters are re-optimized from their current values.
+    """
+
+    # Extracting the kernel hyperparameters and prior mean from the existing model.
+    prior_mean = (
+        model.mean_module
+        .constant
+        .detach()
+        .clone()
+        .to(train_Y)
+    )
+    lengthscale = (
+        model.covar_module
+        .base_kernel
+        .lengthscale
+        .detach()
+        .clone()
+        .to(train_X)
+    )
+    outputscale = (
+        model.covar_module
+        .outputscale
+        .detach()
+        .clone()
+        .to(train_X)
+    )
+    noise = (
+        model.likelihood
+        .noise
+        .detach()
+    )
+
+    if not torch.allclose(
+        noise,
+        noise[0].expand_as(noise),
+    ):
+        raise ValueError(
+            "update_value_gp expects a constant fixed nugget."
+        )
+
+    nugget = noise[0].item()
+
+    ard = (
+        model.covar_module
+        .base_kernel
+        .ard_num_dims
+        is not None
+    )
+
+    # Rebuild the GP with the new data and the extracted hyperparameters.
+    updated_model = build_value_gp(
+        train_X,
+        train_Y,
+        prior_mean=prior_mean,
+        nugget=nugget,
+        use_ard=ard,
+    )
+
+    updated_model.covar_module.base_kernel.initialize(
+        lengthscale=lengthscale,
+    )
+
+    updated_model.covar_module.initialize(
+        outputscale=outputscale,
+    )
+
+    if refit:
+        fit_value_gp(updated_model)
+
+    return updated_model
