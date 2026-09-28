@@ -1,17 +1,19 @@
 from functools import partial
 
 import torch
+
+from botorch.exceptions.errors import ModelFittingError
 from torch import Tensor
 
 from lago.autodiff import hessian
 from lago.gp import (
     build_value_gp,
-    fit_value_gp,
     posterior_mean,
     posterior_mean_hessian,
     posterior_variance,
     update_value_gp,
 )
+import lago.gp as gp
 
 
 dtype = torch.float64
@@ -188,7 +190,7 @@ def test_fit_value_gp():
         .clone()
     )
 
-    fit_value_gp(model)
+    gp.fit_value_gp(model)
 
     lengthscale = (
         model.covar_module
@@ -638,3 +640,35 @@ def test_update_value_gp_can_refit():
         updated.mean_module.constant,
         initial_mean,
     )
+
+def test_fit_value_gp_restores_parameters_when_fit_fails(
+    monkeypatch,
+):
+    train_X, train_Y = make_training_data()
+    model = build_value_gp(train_X, train_Y)
+
+    before = {
+        name: value.detach().clone()
+        for name, value in model.state_dict().items()
+    }
+
+    def fail_fit(*args, **kwargs):
+        raise ModelFittingError("test failure")
+
+    monkeypatch.setattr(
+        gp,
+        "fit_gpytorch_mll",
+        fail_fit,
+    )
+
+    success = gp.fit_value_gp(model)
+
+    assert not success
+
+    after = model.state_dict()
+
+    for name in before:
+        torch.testing.assert_close(
+            after[name],
+            before[name],
+        )

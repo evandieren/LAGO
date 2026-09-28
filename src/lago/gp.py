@@ -1,5 +1,8 @@
 import gpytorch
 import torch
+import warnings
+
+from botorch.exceptions.errors import ModelFittingError
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from gpytorch.kernels import MaternKernel, ScaleKernel
@@ -106,17 +109,34 @@ def build_value_gp(
 
 def fit_value_gp(
     model: SingleTaskGP,
-) -> SingleTaskGP:
+) -> bool:
     """Fit the GP kernel hyperparameters by marginal likelihood."""
 
     mll = ExactMarginalLogLikelihood(
         model.likelihood,
         model,
     )
-    
-    fit_gpytorch_mll(mll)
 
-    return model
+    old_state = {
+        name: value.detach().clone()
+        for name, value in model.state_dict().items()
+    }
+
+    try:
+        fit_gpytorch_mll(mll)
+
+    except ModelFittingError:
+        model.load_state_dict(old_state)
+
+        warnings.warn(
+            "GP hyperparameter optimization failed; "
+            "keeping the previous hyperparameters.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return False
+
+    return True
 
 def posterior_mean(
     model: SingleTaskGP,

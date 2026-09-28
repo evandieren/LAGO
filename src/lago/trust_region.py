@@ -18,6 +18,27 @@ class TrustRegionConfig:
     expand_factor: float
     max_radius: float
 
+def get_sr1_tr_config(
+    lengthscale: float,
+    bounds: Tensor,
+) -> TrustRegionConfig:
+    diameter = torch.linalg.norm(
+        bounds[1] - bounds[0]
+    ).item()
+
+    return TrustRegionConfig(
+        initial_radius=min(
+            lengthscale / 2.0,
+            diameter / 8.0,
+        ),
+        acceptance_threshold=5e-4,
+        shrink_threshold=0.25,
+        expand_threshold=0.75,
+        shrink_factor=0.5,
+        expand_factor=2.0,
+        max_radius=diameter / 2.0,
+    )
+
 @dataclass
 class TrustRegionState:
     center : Tensor
@@ -379,3 +400,19 @@ def cauchy_point(
         step = step * (radius / step_norm)
 
     return step
+
+def reinitialize_trust_region(
+    center: Tensor,
+    f_center: Tensor,
+    grad_center: Tensor,
+    hessian: Tensor,
+    config: TrustRegionConfig,
+) -> TrustRegionState:
+    return TrustRegionState(
+        center=center,
+        radius=config.initial_radius,
+        f_center=f_center,
+        grad_center=grad_center,
+        hessian=hessian,
+        terminated=False,
+    )

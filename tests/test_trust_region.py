@@ -1,3 +1,4 @@
+import math
 import tomllib
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from lago.trust_region import (
     is_box_feasible,
     get_local_candidate,
     cauchy_point,
+    get_sr1_tr_config,
 )
 
 def load_reference():
@@ -543,3 +545,22 @@ def test_cauchy_point_negative_curvature_hits_boundary():
         torch.linalg.norm(step),
         torch.tensor(radius, dtype=dtype),
     )
+
+def test_get_sr1_tr_config():
+    bounds = torch.tensor(
+        [[0.0, 0.0], [1.0, 1.0]],
+        dtype=torch.float64,
+    )
+
+    config = get_sr1_tr_config(
+        lengthscale=1.0,
+        bounds=bounds,
+    )
+
+    diameter = math.sqrt(2.0)
+
+    assert config.initial_radius == min(
+        0.5,
+        diameter / 8.0,
+    )
+    assert config.max_radius == diameter / 2.0
