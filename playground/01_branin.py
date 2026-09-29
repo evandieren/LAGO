@@ -98,5 +98,6 @@ ax.semilogy(
 
 ax.set_xlabel("Equivalent function evaluations")
 ax.set_ylabel(r"$f_{\mathrm{best}} - f^\star$")
+ax.set_title("LAGO-BO — Branin")
 
 plt.show()

@@ -5,6 +5,7 @@ from botorch.utils.sampling import draw_sobol_samples
 
 from lago.autodiff import gradient
 from lago.optimizer import run_lago
+from lago.plotting import equivalent_evaluation_costs
 
 dtype = torch.float64
 
@@ -20,6 +21,8 @@ def objective(x):
 def objective_gradient(x):
     return gradient(objective, x)
 
+f_star = problem.optimal_value
+print("true minimum:", f_star)
 
 # Paper setup: 5d initial points.
 n_initial = 5 * d
@@ -40,7 +43,7 @@ state = run_lago(
     gradient=objective_gradient,
     bounds=bounds,
     gradient_cost=d,
-    evaluation_budget=210 * d,
+    evaluation_budget= 210*d,
     num_restarts=100,
     raw_samples=10000
 )
@@ -63,31 +66,30 @@ print("f evals:", state.archive.n_function_evals)
 print("g evals:", state.archive.n_gradient_evals)
 print("cost:", state.archive.cost(d))
 
+
+cost = equivalent_evaluation_costs(
+    state,
+    gradient_cost=d,
+)
+
 best_values = torch.cummin(
     state.archive.Y.squeeze(-1),
     dim=0,
 ).values
 
-error = best_values - problem.optimal_value
-
 error = torch.clamp(
-    error,
-    min=torch.finfo(dtype).eps,
-)
-
-n_evals = torch.arange(
-    1,
-    len(error) + 1,
+    best_values - f_star,
+    min=torch.finfo(best_values.dtype).eps,
 )
 
 fig, ax = plt.subplots()
 
 ax.semilogy(
-    n_evals.cpu(),
+    cost.cpu(),
     error.cpu(),
 )
 
-ax.set_xlabel("Function evaluations")
+ax.set_xlabel("Equivalent function evaluations")
 ax.set_ylabel(r"$f_{\mathrm{best}} - f^\star$")
 ax.set_title("LAGO-BO — Hartmann 6D")
 
