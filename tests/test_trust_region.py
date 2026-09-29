@@ -7,17 +7,18 @@ import torch
 from lago.trust_region import (
     TrustRegionConfig,
     TrustRegionState,
-    quadratic_model,
+    cauchy_point,
+    get_local_candidate,
+    get_sr1_tr_config,
     improvement_ratio,
+    is_box_feasible,
     predicted_improvement,
+    project_onto_tr_ball,
+    quadratic_model,
     sr1_update,
     update_radius,
-    project_onto_tr_ball,
-    is_box_feasible,
-    get_local_candidate,
-    cauchy_point,
-    get_sr1_tr_config,
 )
+
 
 def load_reference():
     path = Path("reference/data/trust_region_reference.toml")

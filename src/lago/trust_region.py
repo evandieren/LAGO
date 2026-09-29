@@ -8,6 +8,7 @@ from ._trust_region_solver import (
     solve_trust_region_subproblem,
 )
 
+
 @dataclass(frozen=True)
 class TrustRegionConfig:
     initial_radius: float

@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from lago.iteration import (
@@ -8,10 +7,6 @@ from lago.trust_region import (
     TrustRegionConfig,
     TrustRegionState,
 )
-
-from lago.gp import build_value_gp
-
-
 
 dtype = torch.float64
 

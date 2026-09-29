@@ -1,11 +1,9 @@
 import pytest
 import torch
-
 from botorch.acquisition import LogExpectedImprovement
 
 from lago.global_search import get_global_candidate
 from lago.gp import build_value_gp
-
 
 dtype = torch.float64
 

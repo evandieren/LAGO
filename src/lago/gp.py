@@ -1,7 +1,7 @@
-import gpytorch
-import torch
 import warnings
 
+import gpytorch
+import torch
 from botorch.exceptions.errors import ModelFittingError
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
@@ -9,8 +9,6 @@ from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.means import ConstantMean
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
-from torch.func import grad
-
 
 _DEFAULT_NUGGET = 1e-9
 

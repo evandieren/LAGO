@@ -1,25 +1,24 @@
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Callable
 
 import torch
-from torch import Tensor
 from botorch.models import SingleTaskGP
+from torch import Tensor
 
 from lago.global_search import get_global_candidate
 from lago.gp import (
     posterior_mean_hessian,
     update_value_gp,
 )
-
 from lago.trust_region import (
     TrustRegionConfig,
     TrustRegionState,
+    get_local_candidate,
     improvement_ratio,
     predicted_improvement,
+    reinitialize_trust_region,
     sr1_update,
     update_radius,
-    reinitialize_trust_region,
-    get_local_candidate,
 )
 
 

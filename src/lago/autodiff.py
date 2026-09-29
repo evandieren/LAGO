@@ -1,6 +1,7 @@
 # Gradients and Hessians
 import torch
 
+
 def gradient(f, x):
     return torch.autograd.functional.jacobian(
         f,

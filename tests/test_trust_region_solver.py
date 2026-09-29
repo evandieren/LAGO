@@ -1,12 +1,12 @@
-from pathlib import Path
 import tomllib
-import pytest
+from pathlib import Path
 
+import pytest
 import torch
 
 from lago._trust_region_solver import (
-    solve_trust_region_subproblem,
     solve_box_trust_region_subproblem,
+    solve_trust_region_subproblem,
 )
 
 dtype = torch.float64
@@ -17,7 +17,6 @@ def load_reference():
     with path.open("rb") as f:
         return tomllib.load(f)
 
-        import pytest
 
 @pytest.mark.parametrize(
     "case_name",

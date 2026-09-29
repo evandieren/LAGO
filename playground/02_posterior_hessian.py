@@ -1,8 +1,9 @@
 # Given a fitted GP, compute \nabla \mu(x), and \nabla^2 \mu(x), and check
 # numerically with FD.
 import math
-import torch
+
 import gpytorch
+import torch
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from gpytorch.kernels import MaternKernel, ScaleKernel

@@ -2,12 +2,12 @@ import math
 
 import torch
 
-import lago.optimizer as optimizer
+# import lago.optimizer as optimizer
+from lago import optimizer
 from lago.gp import build_value_gp
 from lago.iteration import IterationProposal, IterationResult
 from lago.optimizer import LAGOState
 from lago.trust_region import TrustRegionConfig, TrustRegionState
-
 
 dtype = torch.float64
 

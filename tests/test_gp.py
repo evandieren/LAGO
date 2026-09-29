@@ -1,10 +1,10 @@
 from functools import partial
 
 import torch
-
 from botorch.exceptions.errors import ModelFittingError
 from torch import Tensor
 
+from lago import gp
 from lago.autodiff import hessian
 from lago.gp import (
     build_value_gp,
@@ -13,8 +13,6 @@ from lago.gp import (
     posterior_variance,
     update_value_gp,
 )
-import lago.gp as gp
-
 
 dtype = torch.float64
 
@@ -667,8 +665,8 @@ def test_fit_value_gp_restores_parameters_when_fit_fails(
 
     after = model.state_dict()
 
-    for name in before:
+    for name, value in before.items():
         torch.testing.assert_close(
             after[name],
-            before[name],
+            value,
         )

@@ -1,10 +1,9 @@
 import torch
-from torch import Tensor
-
 from botorch.acquisition import LogExpectedImprovement
 from botorch.models import SingleTaskGP
 from botorch.optim import optimize_acqf
 from botorch.utils.sampling import draw_sobol_samples
+from torch import Tensor
 
 
 def get_global_candidate(

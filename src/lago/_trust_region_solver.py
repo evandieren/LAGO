@@ -6,7 +6,6 @@ from scipy.optimize import Bounds, NonlinearConstraint, minimize
 from scipy.optimize._trustregion_exact import IterativeSubproblem
 from torch import Tensor
 
-
 _K_EASY = 1e-10
 _K_HARD = 1e-6
 _MAXITER = 100

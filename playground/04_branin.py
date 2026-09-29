@@ -1,14 +1,13 @@
 import math
+
+import matplotlib.pyplot as plt
 import torch
-from torch.quasirandom import SobolEngine
 from botorch.test_functions import Branin
+from torch.quasirandom import SobolEngine
 
 from lago.autodiff import gradient
 from lago.optimizer import run_lago
-from lago.trust_region import TrustRegionConfig
 from lago.plotting import equivalent_evaluation_costs
-
-import matplotlib.pyplot as plt
 
 dtype = torch.float64
 
@@ -99,3 +98,5 @@ ax.semilogy(
 
 ax.set_xlabel("Equivalent function evaluations")
 ax.set_ylabel(r"$f_{\mathrm{best}} - f^\star$")
+
+plt.show()

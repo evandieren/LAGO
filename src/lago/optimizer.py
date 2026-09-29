@@ -1,13 +1,12 @@
-from dataclasses import dataclass
 import math
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition import PosteriorMean
 from botorch.models import SingleTaskGP
 from botorch.optim import optimize_acqf
+from torch import Tensor
 
 from lago.gp import (
     build_value_gp,
@@ -15,16 +14,16 @@ from lago.gp import (
     posterior_mean_hessian,
     update_value_gp,
 )
+from lago.iteration import (
+    execute_iteration,
+    propose_iteration,
+)
 from lago.trust_region import (
     TrustRegionConfig,
     TrustRegionState,
     get_sr1_tr_config,
 )
 
-from lago.iteration import (
-    propose_iteration,
-    execute_iteration,
-)
 
 @dataclass
 class EvaluationArchive:

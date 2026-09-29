@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 import pytest
 import torch
@@ -10,7 +10,6 @@ from lago.gp import (
     posterior_mean_hessian,
     posterior_variance,
 )
-
 
 dtype = torch.float64
 

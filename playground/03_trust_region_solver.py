@@ -1,9 +1,8 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 import numpy as np
 from scipy.optimize._trustregion_exact import IterativeSubproblem
-
 
 # ---------------------------------------------------------------------
 # Load Julia reference data
@@ -139,7 +138,7 @@ for name in ["indefinite", "hard"]:
             f"{step_norm:16.12f}"
             f"{subproblem.lambda_current:20.12f}"
             f"{model_value:20.12f}"
-            f"{str(hits_boundary):>12}"
+            f"{hits_boundary!s:>12}"
         )
 
     print()

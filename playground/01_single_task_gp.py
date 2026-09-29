@@ -1,10 +1,11 @@
 import math
-import torch
+
 import gpytorch
-from botorch.models import SingleTaskGP
-from gpytorch.mlls import ExactMarginalLogLikelihood
+import torch
 from botorch.fit import fit_gpytorch_mll
+from botorch.models import SingleTaskGP
 from gpytorch.kernels import MaternKernel, ScaleKernel
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 # use a GPU if available
 device = torch.device("cpu")

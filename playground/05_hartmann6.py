@@ -1,12 +1,10 @@
-import torch
 import matplotlib.pyplot as plt
-
+import torch
 from botorch.test_functions import Hartmann
 from botorch.utils.sampling import draw_sobol_samples
 
 from lago.autodiff import gradient
 from lago.optimizer import run_lago
-
 
 dtype = torch.float64
 
