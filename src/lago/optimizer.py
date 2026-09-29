@@ -350,10 +350,11 @@ def run_lago(
         # -----------------------------------------------------
 
         if next_iteration % refit_interval == 0:
-            print(
-                f"refitting GP at iteration {next_iteration}, "
-                f"n={state.active_X.shape[0]}"
-            )
+            if verbose:
+                print(
+                    f"refitting GP at iteration {next_iteration}, "
+                    f"n={state.active_X.shape[0]}"
+                )
             state.model = update_value_gp(
                 state.model,
                 state.active_X,
