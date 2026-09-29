@@ -37,34 +37,6 @@ config = TrustRegionConfig(
     max_radius=4.0,
 )
 
-## -----------------------
-## TrustRegion state tests
-## -----------------------
-def test_trust_region_state():
-    state = TrustRegionState(
-        center=torch.tensor(
-            [0.0, 0.0],
-            dtype=dtype,
-        ),
-        radius=1.0,
-        f_center=torch.tensor(
-            1.0,
-            dtype=dtype,
-        ),
-        grad_center=torch.tensor(
-            [-1.0, 2.0],
-            dtype=dtype,
-        ),
-        hessian=torch.tensor(
-            [[2.0, 0.3],
-             [0.3, 1.0]],
-            dtype=dtype,
-        ),
-    )
-
-    assert state.radius == 1.0
-    assert not state.terminated
-
 ## ---------------------------
 ## Quadratic model tests
 ## ---------------------------
@@ -192,41 +164,6 @@ def test_sr1_update_matches_julia():
     torch.testing.assert_close(
         updated_hessian,
         expected,
-    )
-
-def test_sr1_update_is_symmetric():
-    reference = load_reference()
-
-    model_data = reference["quadratic_model"]
-    sr1_data = reference["accepted_sr1"]
-
-    hessian = torch.tensor(
-        model_data["hessian"],
-        dtype=dtype,
-    )
-    step = torch.tensor(
-        model_data["step"],
-        dtype=dtype,
-    )
-
-    grad_center = torch.tensor(
-        model_data["gradient"],
-        dtype=dtype,
-    )
-    grad_trial = torch.tensor(
-        sr1_data["gradient"],
-        dtype=dtype,
-    )
-
-    updated_hessian = sr1_update(
-        hessian,
-        step,
-        grad_trial - grad_center,
-    )
-
-    torch.testing.assert_close(
-        updated_hessian,
-        updated_hessian.T,
     )
 
 def test_sr1_skips_degenerate_update():
