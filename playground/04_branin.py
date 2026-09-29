@@ -1,3 +1,4 @@
+import math
 import torch
 from torch.quasirandom import SobolEngine
 from botorch.test_functions import Branin
@@ -5,6 +6,7 @@ from botorch.test_functions import Branin
 from lago.autodiff import gradient
 from lago.optimizer import run_lago
 from lago.trust_region import TrustRegionConfig
+from lago.plotting import equivalent_evaluation_costs
 
 import matplotlib.pyplot as plt
 
@@ -20,6 +22,9 @@ def objective(x):
 def objective_gradient(x):
     return gradient(objective, x)
 
+x_star = torch.tensor([math.pi, 2.275], dtype=dtype)
+f_star = problem(x_star).item()
+print("true minimum:", f_star)
 
 sobol = SobolEngine(
     dimension=2,
@@ -46,6 +51,8 @@ state = run_lago(
     bounds=bounds,
     evaluation_budget= 210*d,
     gradient_cost=d,
+    num_restarts=100,
+    raw_samples=10000
 )
 
 best_index = state.archive.Y.squeeze(-1).argmin()
@@ -68,22 +75,27 @@ print("f evals:", state.archive.n_function_evals)
 print("g evals:", state.archive.n_gradient_evals)
 print("cost:", state.archive.cost(d))
 
-best_values = torch.cummin(state.archive.Y.squeeze(-1), dim=0).values
+cost = equivalent_evaluation_costs(
+    state,
+    gradient_cost=d,
+)
 
-error = torch.clamp(best_values - problem.optimal_value, min=torch.finfo(dtype).eps)
-n_evals = torch.arange(
-    1,
-    len(best_values) + 1,
+best_values = torch.cummin(
+    state.archive.Y.squeeze(-1),
+    dim=0,
+).values
+
+error = torch.clamp(
+    best_values - f_star,
+    min=torch.finfo(best_values.dtype).eps,
 )
 
 fig, ax = plt.subplots()
 
 ax.semilogy(
-    n_evals.cpu(),
+    cost.cpu(),
     error.cpu(),
 )
 
-ax.set_xlabel("Function evaluations")
+ax.set_xlabel("Equivalent function evaluations")
 ax.set_ylabel(r"$f_{\mathrm{best}} - f^\star$")
-
-plt.show()

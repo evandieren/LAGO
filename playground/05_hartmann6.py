@@ -42,7 +42,9 @@ state = run_lago(
     gradient=objective_gradient,
     bounds=bounds,
     gradient_cost=d,
-    max_iterations=150,  # smoke test first
+    evaluation_budget=210 * d,
+    num_restarts=100,
+    raw_samples=10000
 )
 
 
